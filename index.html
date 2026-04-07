@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Driver Monitor - Ổn định + Âm thanh</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        body { background: #0a1a1f; font-family: monospace; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: #1e2f33; padding: 1rem; border-radius: 2rem; }
+        .video-box { position: relative; aspect-ratio: 16/9; background: #000; border-radius: 1rem; margin-bottom: 1rem; }
+        video, canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        canvas { pointer-events: none; }
+        .info { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+        .card { background: #2a3b3f; padding: 0.8rem; border-radius: 1rem; flex: 1; text-align: center; color: white; }
+        .alert-card { background: #aa2e1e; animation: pulse 0.8s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        button { background: #0f0; color: #000; border: none; padding: 6px 12px; border-radius: 20px; cursor: pointer; margin-right: 10px; }
+        .log { background: #000; color: #0f0; font-size: 12px; padding: 6px; border-radius: 8px; height: 100px; overflow-y: auto; margin-top: 10px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2 style="color:#0f0;">🚛 Giám sát tài xế (ổn định + âm thanh)</h2>
+    <div class="video-box">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="canvas"></canvas>
+    </div>
+    <div class="info">
+        <div class="card">👁️ Mắt: <span id="eyeState">--</span><br><span id="earVal">EAR: --</span></div>
+        <div class="card">😮 Ngáp: <span id="yawnState">--</span><br><span id="marVal">MAR: --</span></div>
+        <div class="card" id="alertCard">⚠️ Cảnh báo: <span id="alertMsg">✅ Ổn định</span></div>
+    </div>
+    <div>
+        <button id="resetBtn">Reset cảnh báo</button>
+        <button id="toggleBtn">Ẩn/hiện landmarks</button>
+    </div>
+    <div class="log" id="log"></div>
+</div>
+
+<script>
+    (function(){
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const logDiv = document.getElementById('log');
+        let showLandmarks = true;
+        let modelReady = false;
+
+        // ----- Các tham số cải thiện -----
+        const EAR_THRESH = 0.25;           // ngưỡng nhắm mắt
+        const MAR_THRESH = 0.48;           // ngưỡng ngáp
+        const DROWSY_FRAMES = 6;           // số frame nhắm liên tiếp để cảnh báo (nhanh hơn)
+        const STABLE_FRAMES = 3;            // cần 3 frame liên tiếp để xác nhận trạng thái mắt (chống nhấp nháy)
+
+        // Bộ lọc trung bình trượt cho EAR (cửa sổ 5)
+        let earHistory = [];
+        const EAR_HISTORY_LEN = 5;
+
+        // Trạng thái ổn định
+        let eyeClosedStable = false;         // trạng thái mắt đã được xác nhận
+        let eyeClosedCounter = 0;            // đếm frame liên tiếp (cho xác nhận)
+        let eyeOpenCounter = 0;              // đếm frame mở liên tiếp
+
+        // Cảnh báo buồn ngủ
+        let drowsyFrameCount = 0;            // số frame nhắm mắt liên tiếp (sau khi xác nhận)
+        let drowsyAlertActive = false;
+        let lastYawnTime = 0;
+
+        // Âm thanh (tạo tiếng beep bằng Web Audio API)
+        let audioCtx = null;
+        function playBeep(frequency = 800, duration = 0.3, volume = 0.5) {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                const now = audioCtx.currentTime;
+                const oscillator = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                oscillator.connect(gain);
+                gain.connect(audioCtx.destination);
+                oscillator.frequency.value = frequency;
+                gain.gain.value = volume;
+                oscillator.start();
+                gain.gain.exponentialRampToValueAtTime(0.00001, now + duration);
+                oscillator.stop(now + duration);
+            } catch(e) { console.log("Audio error:", e); }
+        }
+
+        function addLog(msg) {
+            const p = document.createElement('div');
+            p.textContent = new Date().toLocaleTimeString() + ' - ' + msg;
+            logDiv.appendChild(p);
+            p.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            console.log(msg);
+        }
+
+        function dist(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
+        function calculateEAR(eyePoints) {
+            const v1 = dist(eyePoints[1], eyePoints[5]);
+            const v2 = dist(eyePoints[2], eyePoints[4]);
+            const h = dist(eyePoints[0], eyePoints[3]);
+            return h === 0 ? 0.5 : (v1 + v2) / (2.0 * h);
+        }
+        function calculateMAR(landmarks) {
+            const left = landmarks[48], right = landmarks[54], up = landmarks[62], down = landmarks[66];
+            const w = dist(left, right);
+            if (w < 0.01) return 0;
+            return dist(up, down) / w;
+        }
+
+        function drawResults(detection) {
+            if (!ctx || !showLandmarks || !detection) return;
+            const pts = detection.landmarks.positions;
+            const box = detection.detection.box;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#0f0';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+            for (let p of pts) {
+                ctx.fillStyle = '#ffd966';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 2, 0, 2*Math.PI);
+                ctx.fill();
+            }
+        }
+
+        // Làm mượt EAR bằng trung bình trượt
+        function smoothEAR(rawEAR) {
+            earHistory.push(rawEAR);
+            if (earHistory.length > EAR_HISTORY_LEN) earHistory.shift();
+            const sum = earHistory.reduce((a,b) => a+b, 0);
+            return sum / earHistory.length;
+        }
+
+        function updateUI(ear, mar, rawEyesClosed, isYawning) {
+            // --- Xác nhận trạng thái mắt ổn định (chống nhấp nháy) ---
+            if (rawEyesClosed) {
+                eyeOpenCounter = 0;
+                eyeClosedCounter++;
+                if (eyeClosedCounter >= STABLE_FRAMES && !eyeClosedStable) {
+                    eyeClosedStable = true;
+                    // Chuyển sang trạng thái NHẮM
+                }
+            } else {
+                eyeClosedCounter = 0;
+                eyeOpenCounter++;
+                if (eyeOpenCounter >= STABLE_FRAMES && eyeClosedStable) {
+                    eyeClosedStable = false;
+                    // Chuyển sang MỞ
+                }
+            }
+            const eyesClosed = eyeClosedStable;  // trạng thái đã được ổn định
+
+            // Hiển thị EAR và MAR
+            document.getElementById('earVal').innerHTML = `EAR: ${ear.toFixed(3)}`;
+            document.getElementById('marVal').innerHTML = `MAR: ${mar.toFixed(3)}`;
+            document.getElementById('eyeState').innerHTML = eyesClosed ? "NHẮM" : "MỞ";
+
+            // --- Ngáp (vẫn dùng raw để phản ứng nhanh) ---
+            const now = Date.now();
+            if (isYawning && now - lastYawnTime > 3000) {
+                lastYawnTime = now;
+                document.getElementById('yawnState').innerHTML = "NGÁP!";
+                document.getElementById('alertMsg').innerHTML = "⚠️ PHÁT HIỆN NGÁP!";
+                playBeep(1200, 0.4, 0.6);  // âm thanh ngáp
+                setTimeout(() => {
+                    if (document.getElementById('yawnState').innerHTML === "NGÁP!") 
+                        document.getElementById('yawnState').innerHTML = "Bình thường";
+                }, 2000);
+            } else if (isYawning) {
+                document.getElementById('yawnState').innerHTML = "Đang ngáp...";
+            } else {
+                if (document.getElementById('yawnState').innerHTML !== "NGÁP!")
+                    document.getElementById('yawnState').innerHTML = "Bình thường";
+            }
+
+            // --- Cảnh báo buồn ngủ (dựa trên trạng thái ổn định) ---
+            if (eyesClosed) {
+                drowsyFrameCount++;
+            } else {
+                drowsyFrameCount = 0;
+            }
+            const alertCard = document.getElementById('alertCard');
+            const alertMsgSpan = document.getElementById('alertMsg');
+            if (drowsyFrameCount >= DROWSY_FRAMES && !drowsyAlertActive) {
+                drowsyAlertActive = true;
+                alertMsgSpan.innerHTML = "🚨 BUỒN NGỦ! DỪNG XE 🚨";
+                alertCard.classList.add('alert-card');
+                playBeep(550, 1.0, 0.8);  // âm thanh buồn ngủ kéo dài
+                addLog("⚠️ Cảnh báo buồn ngủ!");
+            } else if (!eyesClosed && drowsyFrameCount === 0 && drowsyAlertActive) {
+                drowsyAlertActive = false;
+                alertCard.classList.remove('alert-card');
+                alertMsgSpan.innerHTML = "✅ Tỉnh táo trở lại";
+                setTimeout(() => {
+                    if (alertMsgSpan.innerHTML === "✅ Tỉnh táo trở lại") alertMsgSpan.innerHTML = "✅ Ổn định";
+                }, 2000);
+            } else if (drowsyAlertActive) {
+                alertMsgSpan.innerHTML = "🚨 BUỒN NGỦ! NGHỈ NGƠI 🚨";
+            }
+        }
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
+                video.srcObject = stream;
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+                video.play();
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                addLog("✅ Webcam OK");
+                return true;
+            } catch(e) {
+                addLog("❌ Lỗi webcam: " + e.message);
+                return false;
+            }
+        }
+
+        async function loadModels() {
+            addLog("🔄 Đang tải model từ thư mục 'models'...");
+            try {
+                // Kiểm tra thử file model có tồn tại không
+                const testUrl = 'models/tiny_face_detector_model-weights_manifest.json';
+                const response = await fetch(testUrl);
+                if (!response.ok) throw new Error(`Không tìm thấy file: ${testUrl} (status ${response.status})`);
+                addLog("✅ Tìm thấy file model, bắt đầu load...");
+                await faceapi.nets.tinyFaceDetector.loadFromUri('models');
+                await faceapi.nets.faceLandmark68Net.loadFromUri('models');
+                modelReady = true;
+                addLog("✅ Model tải xong! Bắt đầu giám sát.");
+                return true;
+            } catch(err) {
+                addLog("❌ Lỗi tải model: " + err.message);
+                addLog("⚠️ Hãy chắc chắn thư mục 'models' nằm cùng cấp với file HTML và chạy bằng Live Server.");
+                return false;
+            }
+        }
+
+        let processing = false;
+        async function detect() {
+            if (!modelReady || !video.videoWidth || processing) {
+                requestAnimationFrame(detect);
+                return;
+            }
+            processing = true;
+            try {
+                const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+                if (!det) {
+                    ctx.clearRect(0,0,canvas.width,canvas.height);
+                    ctx.fillStyle = "#ffaaaa";
+                    ctx.font = "16px monospace";
+                    ctx.fillText("Không thấy mặt", 20, 50);
+                    processing = false;
+                    requestAnimationFrame(detect);
+                    return;
+                }
+                const pts = det.landmarks.positions;
+                const leftEye = pts.slice(36,42);
+                const rightEye = pts.slice(42,48);
+                let rawEAR = (calculateEAR(leftEye) + calculateEAR(rightEye)) / 2;
+                const smoothedEAR = smoothEAR(rawEAR);
+                const mar = calculateMAR(pts);
+                const rawEyesClosed = smoothedEAR < EAR_THRESH;
+                const isYawning = mar > MAR_THRESH;
+                updateUI(smoothedEAR, mar, rawEyesClosed, isYawning);
+                drawResults(det);
+            } catch(e) { console.error(e); }
+            processing = false;
+            requestAnimationFrame(detect);
+        }
+
+        // Nút reset
+        document.getElementById('resetBtn').onclick = () => {
+            drowsyFrameCount = 0;
+            drowsyAlertActive = false;
+            eyeClosedStable = false;
+            eyeClosedCounter = 0;
+            eyeOpenCounter = 0;
+            document.getElementById('alertCard').classList.remove('alert-card');
+            document.getElementById('alertMsg').innerHTML = "✅ Đã reset";
+            setTimeout(() => {
+                if (document.getElementById('alertMsg').innerHTML === "✅ Đã reset")
+                    document.getElementById('alertMsg').innerHTML = "✅ Ổn định";
+            }, 1500);
+            addLog("🔄 Reset cảnh báo");
+        };
+        document.getElementById('toggleBtn').onclick = () => {
+            showLandmarks = !showLandmarks;
+            if (!showLandmarks) ctx.clearRect(0,0,canvas.width,canvas.height);
+        };
+
+        (async function main() {
+            const cam = await startCamera();
+            if (!cam) return;
+            const models = await loadModels();
+            if (models) detect();
+        })();
+    })();
+</script>
+</body>
+</html>
