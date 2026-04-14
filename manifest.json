@@ -1,0 +1,21 @@
+{
+  "short_name": "DriverMonitor",
+  "name": "DMS - Hệ thống giám sát tài xế",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/192/192167.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/512/512167.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/index.html",
+  "display": "standalone",
+  "theme_color": "#0a1a1f",
+  "background_color": "#0a1a1f",
+  "orientation": "landscape"
+}
