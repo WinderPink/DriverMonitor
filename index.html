@@ -224,7 +224,7 @@
         let modelReady = false;
 
         // ----- Các tham số cải thiện -----
-        const EAR_THRESH = 0.25;
+        const EAR_THRESH = 0.28;
         const MAR_THRESH = 0.48;
         const DROWSY_FRAMES = 6;
         const STABLE_FRAMES = 3;
@@ -476,13 +476,9 @@
 
         async function startCamera() {
             try {
-                const isMobile = window.innerWidth < 768; // Điện thoại
-                const videoConstraints = {
-                    width: { ideal: isMobile ? 480 : 640 },
-                    height: { ideal: isMobile ? 640 : 480 },
-                    facingMode: "user"
-                };
-                const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } 
+                });
                 video.srcObject = stream;
                 await new Promise(resolve => video.onloadedmetadata = resolve);
                 video.play();
