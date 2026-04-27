@@ -1,45 +1,210 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/192/192167.png">
-    <meta charset="UTF-8">
     <title>Driver Monitor - Ổn định + Âm thanh</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
-        body { background: #0a1a1f; font-family: monospace; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; background: #1e2f33; padding: 1rem; border-radius: 2rem; }
-        .video-box { position: relative; aspect-ratio: 16/9; background: #000; border-radius: 1rem; margin-bottom: 1rem; }
-        video, canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        canvas { pointer-events: none; }
-        .info { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
-        .card { background: #2a3b3f; padding: 0.8rem; border-radius: 1rem; flex: 1; text-align: center; color: white; }
-        .alert-card { background: #aa2e1e; animation: pulse 0.8s infinite; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            background: #0a1a1f; 
+            font-family: 'Segoe UI', system-ui, sans-serif; 
+            padding: 15px; 
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+        .container { 
+            width: 100%;
+            max-width: 96%; 
+            background: #1e2f33; 
+            padding: 1.2rem; 
+            border-radius: 1.5rem; 
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .video-box { 
+            position: relative; 
+            width: 100%;
+            aspect-ratio: 9 / 16; 
+            background: #000; 
+            border-radius: 1rem; 
+            overflow: hidden;
+        }
+        video, canvas#canvas { 
+            position: absolute; 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            transform: scaleX(-1); 
+        }
+        canvas#canvas { pointer-events: none; }
+
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .info { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 0.8rem; 
+            flex: 1; /* ĐÃ THÊM: để co giãn chiều cao */
+        }
+
+        /* ĐÃ SỬA: style cho card chứa đồ thị */
+        .chart-card {
+            background: #2a3b3f;
+            border-radius: 1rem;
+            padding: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            flex: 1; /* ĐÃ THÊM: chia đều không gian với card alert */
+        }
+        .chart-card canvas {
+            width: 100%;
+            height: auto;
+            background: #1a282c;
+            border-radius: 0.5rem;
+            display: block;
+        }
+        /* ĐÃ THÊM: nhãn nhỏ hiển thị trạng thái bên dưới đồ thị */
+        .chart-label {
+            display: flex;
+            justify-content: space-between;
+            color: #ddd;
+            font-size: 0.85rem;
+            padding: 0 0.2rem;
+        }
+
+        .alert-card { 
+            background: #aa2e1e; 
+            animation: pulse 0.8s infinite; 
+            padding: 1rem;
+            border-radius: 1rem;
+            text-align: center;
+            color: white;
+            font-size: 1rem;
+            /* ĐÃ SỬA: không flex để giữ kích thước nội dung */
+        }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-        button { background: #0f0; color: #000; border: none; padding: 6px 12px; border-radius: 20px; cursor: pointer; margin-right: 10px; }
-        .log { background: #000; color: #0f0; font-size: 12px; padding: 6px; border-radius: 8px; height: 100px; overflow-y: auto; margin-top: 10px; }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        button { 
+            background: #0f0; 
+            color: #000; 
+            border: none; 
+            padding: 12px 20px; 
+            border-radius: 12px; 
+            cursor: pointer; 
+            font-weight: bold;
+            font-size: 0.95rem;
+            flex: 1 0 auto;
+            min-width: 120px;
+            transition: opacity 0.2s;
+        }
+        button:active { opacity: 0.7; }
+
+        .log { 
+            background: #000; 
+            color: #0f0; 
+            font-size: 13px; 
+            padding: 10px; 
+            border-radius: 0.8rem; 
+            height: 120px; 
+            overflow-y: auto; 
+            word-break: break-word;
+        }
+
+        /* Desktop: cam trái, panel phải với đồ thị */
+        @media (min-width: 768px) {
+            .main-content {
+                flex-direction: row;
+                align-items: stretch;
+            }
+            .video-box {
+                flex: 0 0 75%;
+                aspect-ratio: auto; /* bỏ tỉ lệ, kéo giãn theo chiều cao */
+            }
+            .side-panel {
+                flex: 1;
+                min-width: 0;
+            }
+            .chart-card canvas {
+                height: 150px; /* ĐÃ THÊM: chiều cao cố định cho desktop */
+            }
+            .alert-card {
+                flex: 0 0 auto;
+            }
+        }
+
+        @media (max-width: 400px) {
+            body { padding: 8px; }
+            .container { padding: 0.8rem; }
+            button { padding: 10px 14px; font-size: 0.85rem; }
+            .chart-card canvas { height: 100px; }
+        }
     </style>
 </head>
 <body>
 <div class="container">
-    <h2 style="color:#0f0;">🚛 Giám sát tài xế (ổn định + âm thanh)</h2>
-    <div class="video-box">
-        <video id="video" autoplay muted playsinline></video>
-        <canvas id="canvas"></canvas>
+    <h2 style="color:#0f0; text-align: center; margin: 0;">Giám sát tài xế</h2>
+    <div class="main-content">
+        <div class="video-box">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        <div class="side-panel">
+            <div class="info">
+                <!-- ĐÃ THAY THẾ: card Mắt/EAR thành đồ thị -->
+                <div class="chart-card" id="earChartCard">
+                    <canvas id="earChart"></canvas>
+                    <div class="chart-label">
+                        <span>EAR: <span id="earVal">--</span></span>
+                        <span id="eyeState">--</span>
+                    </div>
+                </div>
+                <!-- ĐÃ THAY THẾ: card Ngáp/MAR thành đồ thị -->
+                <div class="chart-card" id="marChartCard">
+                    <canvas id="marChart"></canvas>
+                    <div class="chart-label">
+                        <span>MAR: <span id="marVal">--</span></span>
+                        <span id="yawnState">--</span>
+                    </div>
+                </div>
+                <!-- Card cảnh báo giữ nguyên -->
+                <div class="alert-card" id="alertCard" style="color:#fff; font-weight: bold; padding: 1rem;">
+                    Cảnh báo: <span id="alertMsg">Ổn định</span>
+                </div>
+            </div>
+            <div class="btn-group">
+                <button id="resetBtn">Reset cảnh báo</button>
+                <button id="toggleBtn">Ẩn/hiện landmarks</button>
+            </div>
+            <div class="log" id="log"></div>
+        </div>
     </div>
-    <div class="info">
-        <div class="card">👁️ Mắt: <span id="eyeState">--</span><br><span id="earVal">EAR: --</span></div>
-        <div class="card">😮 Ngáp: <span id="yawnState">--</span><br><span id="marVal">MAR: --</span></div>
-        <div class="card" id="alertCard">⚠️ Cảnh báo: <span id="alertMsg">✅ Ổn định</span></div>
-    </div>
-    <div>
-        <button id="resetBtn">Reset cảnh báo</button>
-        <button id="toggleBtn">Ẩn/hiện landmarks</button>
-    </div>
-    <div class="log" id="log"></div>
 </div>
 
 <script>
@@ -59,26 +224,29 @@
         let modelReady = false;
 
         // ----- Các tham số cải thiện -----
-        const EAR_THRESH = 0.25;           // ngưỡng nhắm mắt
-        const MAR_THRESH = 0.48;           // ngưỡng ngáp
-        const DROWSY_FRAMES = 6;           // số frame nhắm liên tiếp để cảnh báo (nhanh hơn)
-        const STABLE_FRAMES = 3;            // cần 3 frame liên tiếp để xác nhận trạng thái mắt (chống nhấp nháy)
+        const EAR_THRESH = 0.25;
+        const MAR_THRESH = 0.48;
+        const DROWSY_FRAMES = 6;
+        const STABLE_FRAMES = 3;
 
-        // Bộ lọc trung bình trượt cho EAR (cửa sổ 5)
+        // Bộ lọc trung bình trượt cho EAR
         let earHistory = [];
         const EAR_HISTORY_LEN = 5;
 
         // Trạng thái ổn định
-        let eyeClosedStable = false;         // trạng thái mắt đã được xác nhận
-        let eyeClosedCounter = 0;            // đếm frame liên tiếp (cho xác nhận)
-        let eyeOpenCounter = 0;              // đếm frame mở liên tiếp
+        let eyeClosedStable = false;
+        let eyeClosedCounter = 0;
+        let eyeOpenCounter = 0;
 
-        // Cảnh báo buồn ngủ
-        let drowsyFrameCount = 0;            // số frame nhắm mắt liên tiếp (sau khi xác nhận)
+        let drowsyFrameCount = 0;
         let drowsyAlertActive = false;
         let lastYawnTime = 0;
 
-        // Âm thanh (tạo tiếng beep bằng Web Audio API)
+        // ĐÃ THÊM: Dữ liệu cho đồ thị
+        const MAX_CHART_POINTS = 150;
+        let earChartData = [];
+        let marChartData = [];
+
         let audioCtx = null;
         function playBeep(frequency = 800, duration = 0.3, volume = 0.5) {
             try {
@@ -136,57 +304,151 @@
             }
         }
 
-        // Làm mượt EAR bằng trung bình trượt
         function smoothEAR(rawEAR) {
             earHistory.push(rawEAR);
             if (earHistory.length > EAR_HISTORY_LEN) earHistory.shift();
-            const sum = earHistory.reduce((a,b) => a+b, 0);
-            return sum / earHistory.length;
+            return earHistory.reduce((a,b) => a+b, 0) / earHistory.length;
+        }
+
+        // ĐÃ THÊM: Hàm vẽ đồ thị
+        function drawChart(canvasId, data, yMax, color, currentValue, statusText) {
+            const cvs = document.getElementById(canvasId);
+            if (!cvs) return;
+            const w = cvs.width = cvs.clientWidth || 300;
+            const h = cvs.height = cvs.clientHeight || 150;
+            const gctx = cvs.getContext('2d');
+            gctx.clearRect(0, 0, w, h);
+
+            // Nền
+            gctx.fillStyle = '#1a282c';
+            gctx.fillRect(0, 0, w, h);
+
+            if (data.length < 2) {
+                // Vẽ nhãn nếu chưa có dữ liệu
+                gctx.fillStyle = '#aaa';
+                gctx.font = '12px monospace';
+                gctx.textAlign = 'center';
+                gctx.fillText('Đang chờ dữ liệu...', w/2, h/2);
+                return;
+            }
+
+            // Tính tỉ lệ
+            const stepX = w / (data.length - 1);
+            const rangeY = h - 20; // chừa lề dưới
+            const zeroY = h - 10;
+
+            // Vẽ đường
+            gctx.beginPath();
+            gctx.strokeStyle = color;
+            gctx.lineWidth = 2;
+            for (let i = 0; i < data.length; i++) {
+                const x = i * stepX;
+                const y = zeroY - (data[i] / yMax) * rangeY;
+                if (i === 0) gctx.moveTo(x, y);
+                else gctx.lineTo(x, y);
+            }
+            gctx.stroke();
+
+            // Vẽ điểm cuối
+            const lastX = (data.length - 1) * stepX;
+            const lastY = zeroY - (data[data.length-1] / yMax) * rangeY;
+            gctx.beginPath();
+            gctx.arc(lastX, lastY, 3, 0, 2*Math.PI);
+            gctx.fillStyle = color;
+            gctx.fill();
+
+            // Vẽ giá trị hiện tại
+            gctx.fillStyle = '#fff';
+            gctx.font = 'bold 11px monospace';
+            gctx.textAlign = 'left';
+            gctx.fillText(currentValue.toFixed(3), 5, 15);
+            gctx.textAlign = 'right';
+            gctx.fillText(statusText, w-5, 15);
+
+            // Trục ngang (mờ)
+            gctx.beginPath();
+            gctx.strokeStyle = '#444';
+            gctx.lineWidth = 1;
+            gctx.moveTo(0, zeroY);
+            gctx.lineTo(w, zeroY);
+            gctx.stroke();
+        }
+
+        // Hàm reset tất cả trạng thái (ĐÃ THÊM)
+        function resetAllStates() {
+            drowsyFrameCount = 0;
+            drowsyAlertActive = false;
+            eyeClosedStable = false;
+            eyeClosedCounter = 0;
+            eyeOpenCounter = 0;
+            earChartData = [];
+            marChartData = [];
+            earHistory = [];
+            document.getElementById('alertCard').classList.remove('alert-card');
+            document.getElementById('alertMsg').textContent = "Đã reset";
+            document.getElementById('eyeState').textContent = "--";
+            document.getElementById('yawnState').textContent = "--";
+            document.getElementById('earVal').textContent = "--";
+            document.getElementById('marVal').textContent = "--";
+            setTimeout(() => {
+                if (document.getElementById('alertMsg').textContent === "Đã reset")
+                    document.getElementById('alertMsg').textContent = "Ổn định";
+            }, 1500);
+            addLog("Reset cảnh báo (tự động khi khởi động)");
         }
 
         function updateUI(ear, mar, rawEyesClosed, isYawning) {
-            // --- Xác nhận trạng thái mắt ổn định (chống nhấp nháy) ---
+            // --- Xác nhận trạng thái mắt ổn định ---
             if (rawEyesClosed) {
                 eyeOpenCounter = 0;
                 eyeClosedCounter++;
                 if (eyeClosedCounter >= STABLE_FRAMES && !eyeClosedStable) {
                     eyeClosedStable = true;
-                    // Chuyển sang trạng thái NHẮM
                 }
             } else {
                 eyeClosedCounter = 0;
                 eyeOpenCounter++;
                 if (eyeOpenCounter >= STABLE_FRAMES && eyeClosedStable) {
                     eyeClosedStable = false;
-                    // Chuyển sang MỞ
                 }
             }
-            const eyesClosed = eyeClosedStable;  // trạng thái đã được ổn định
+            const eyesClosed = eyeClosedStable;
 
-            // Hiển thị EAR và MAR
-            document.getElementById('earVal').innerHTML = `EAR: ${ear.toFixed(3)}`;
-            document.getElementById('marVal').innerHTML = `MAR: ${mar.toFixed(3)}`;
-            document.getElementById('eyeState').innerHTML = eyesClosed ? "NHẮM" : "MỞ";
+            // Cập nhật text hiển thị
+            document.getElementById('earVal').textContent = ear.toFixed(3);
+            document.getElementById('marVal').textContent = mar.toFixed(3);
+            document.getElementById('eyeState').textContent = eyesClosed ? "NHẮM" : "MỞ";
 
-            // --- Ngáp (vẫn dùng raw để phản ứng nhanh) ---
+            // --- Cập nhật dữ liệu đồ thị ---
             const now = Date.now();
+            earChartData.push(ear);
+            marChartData.push(mar);
+            if (earChartData.length > MAX_CHART_POINTS) earChartData.shift();
+            if (marChartData.length > MAX_CHART_POINTS) marChartData.shift();
+
+            // Vẽ đồ thị EAR (yMax 0.5)
+            drawChart('earChart', earChartData, 0.5, '#00ff00', ear, eyesClosed ? 'NHẮM' : 'MỞ');
+            // Vẽ đồ thị MAR (yMax 1.0)
+            drawChart('marChart', marChartData, 1.0, '#ffaa00', mar, isYawning ? 'NGÁP' : 'BT');
+
+            // --- Xử lý ngáp ---
             if (isYawning && now - lastYawnTime > 3000) {
                 lastYawnTime = now;
-                document.getElementById('yawnState').innerHTML = "NGÁP!";
-                document.getElementById('alertMsg').innerHTML = "⚠️ PHÁT HIỆN NGÁP!";
-                playBeep(1200, 0.4, 0.6);  // âm thanh ngáp
+                document.getElementById('yawnState').textContent = "NGÁP!";
+                document.getElementById('alertMsg').textContent = "PHÁT HIỆN NGÁP!";
+                playBeep(1200, 0.4, 0.6);
                 setTimeout(() => {
-                    if (document.getElementById('yawnState').innerHTML === "NGÁP!") 
-                        document.getElementById('yawnState').innerHTML = "Bình thường";
+                    if (document.getElementById('yawnState').textContent === "NGÁP!") 
+                        document.getElementById('yawnState').textContent = "Bình thường";
                 }, 2000);
             } else if (isYawning) {
-                document.getElementById('yawnState').innerHTML = "Đang ngáp...";
+                document.getElementById('yawnState').textContent = "Đang ngáp...";
             } else {
-                if (document.getElementById('yawnState').innerHTML !== "NGÁP!")
-                    document.getElementById('yawnState').innerHTML = "Bình thường";
+                if (document.getElementById('yawnState').textContent !== "NGÁP!")
+                    document.getElementById('yawnState').textContent = "Bình thường";
             }
 
-            // --- Cảnh báo buồn ngủ (dựa trên trạng thái ổn định) ---
+            // --- Cảnh báo buồn ngủ ---
             if (eyesClosed) {
                 drowsyFrameCount++;
             } else {
@@ -196,54 +458,53 @@
             const alertMsgSpan = document.getElementById('alertMsg');
             if (drowsyFrameCount >= DROWSY_FRAMES && !drowsyAlertActive) {
                 drowsyAlertActive = true;
-                alertMsgSpan.innerHTML = "🚨 BUỒN NGỦ! DỪNG XE 🚨";
+                alertMsgSpan.textContent = "BUỒN NGỦ! DỪNG XE";
                 alertCard.classList.add('alert-card');
-                playBeep(550, 1.0, 0.8);  // âm thanh buồn ngủ kéo dài
-                addLog("⚠️ Cảnh báo buồn ngủ!");
+                playBeep(550, 1.0, 0.8);
+                addLog("Cảnh báo buồn ngủ!");
             } else if (!eyesClosed && drowsyFrameCount === 0 && drowsyAlertActive) {
                 drowsyAlertActive = false;
                 alertCard.classList.remove('alert-card');
-                alertMsgSpan.innerHTML = "✅ Tỉnh táo trở lại";
+                alertMsgSpan.textContent = "Tỉnh táo trở lại";
                 setTimeout(() => {
-                    if (alertMsgSpan.innerHTML === "✅ Tỉnh táo trở lại") alertMsgSpan.innerHTML = "✅ Ổn định";
+                    if (alertMsgSpan.textContent === "Tỉnh táo trở lại") alertMsgSpan.textContent = "Ổn định";
                 }, 2000);
             } else if (drowsyAlertActive) {
-                alertMsgSpan.innerHTML = "🚨 BUỒN NGỦ! NGHỈ NGƠI 🚨";
+                alertMsgSpan.textContent = "BUỒN NGỦ! NGHỈ NGƠI";
             }
         }
 
         async function startCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } 
+                });
                 video.srcObject = stream;
                 await new Promise(resolve => video.onloadedmetadata = resolve);
                 video.play();
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
-                addLog("✅ Webcam OK");
+                addLog("Webcam OK");
                 return true;
             } catch(e) {
-                addLog("❌ Lỗi webcam: " + e.message);
+                addLog("Lỗi webcam: " + e.message);
                 return false;
             }
         }
 
         async function loadModels() {
-            addLog("🔄 Đang tải model từ thư mục 'models'...");
+            addLog("Đang tải model...");
             try {
-                // Kiểm tra thử file model có tồn tại không
                 const testUrl = 'models/tiny_face_detector_model-weights_manifest.json';
                 const response = await fetch(testUrl);
-                if (!response.ok) throw new Error(`Không tìm thấy file: ${testUrl} (status ${response.status})`);
-                addLog("✅ Tìm thấy file model, bắt đầu load...");
+                if (!response.ok) throw new Error(`Không tìm thấy file: ${testUrl}`);
                 await faceapi.nets.tinyFaceDetector.loadFromUri('models');
                 await faceapi.nets.faceLandmark68Net.loadFromUri('models');
                 modelReady = true;
-                addLog("✅ Model tải xong! Bắt đầu giám sát.");
+                addLog("Model sẵn sàng!");
                 return true;
             } catch(err) {
-                addLog("❌ Lỗi tải model: " + err.message);
-                addLog("⚠️ Hãy chắc chắn thư mục 'models' nằm cùng cấp với file HTML và chạy bằng Live Server.");
+                addLog("Lỗi model: " + err.message);
                 return false;
             }
         }
@@ -281,21 +542,7 @@
             requestAnimationFrame(detect);
         }
 
-        // Nút reset
-        document.getElementById('resetBtn').onclick = () => {
-            drowsyFrameCount = 0;
-            drowsyAlertActive = false;
-            eyeClosedStable = false;
-            eyeClosedCounter = 0;
-            eyeOpenCounter = 0;
-            document.getElementById('alertCard').classList.remove('alert-card');
-            document.getElementById('alertMsg').innerHTML = "✅ Đã reset";
-            setTimeout(() => {
-                if (document.getElementById('alertMsg').innerHTML === "✅ Đã reset")
-                    document.getElementById('alertMsg').innerHTML = "✅ Ổn định";
-            }, 1500);
-            addLog("🔄 Reset cảnh báo");
-        };
+        document.getElementById('resetBtn').onclick = resetAllStates;
         document.getElementById('toggleBtn').onclick = () => {
             showLandmarks = !showLandmarks;
             if (!showLandmarks) ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -305,9 +552,13 @@
             const cam = await startCamera();
             if (!cam) return;
             const models = await loadModels();
-            if (models) detect();
+            if (models) {
+                resetAllStates();
+                detect();
+            }
         })();
     })();
 </script>
 </body>
 </html>
+
