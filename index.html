@@ -138,7 +138,7 @@
         }
 
         /* Desktop: cam trái, panel phải với đồ thị */
-        @media (min-width: 768px) {
+        @media (min-width: 768px) and (orientation: landscape) {
             .main-content {
                 flex-direction: row;
                 align-items: stretch;
@@ -164,6 +164,18 @@
             .container { padding: 0.8rem; }
             button { padding: 10px 14px; font-size: 0.85rem; }
             .chart-card canvas { height: 100px; }
+        }
+
+        /* ✅ ĐÃ THÊM: tối ưu hiển thị mobile dọc */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column; /* ép chắc chắn 1 cột */
+            }
+
+            .video-box {
+                height: 50vh; /* camera chiếm nửa màn hình */
+                aspect-ratio: auto;
+            }
         }
     </style>
 </head>
