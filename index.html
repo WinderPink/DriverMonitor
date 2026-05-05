@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/192/192167.png">
-    <title>Driver Monitor - Ổn định + Âm thanh</title>
+    <title>Driver Monitor</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
@@ -65,10 +65,9 @@
             display: flex; 
             flex-direction: column; 
             gap: 0.8rem; 
-            flex: 1; /* ĐÃ THÊM: để co giãn chiều cao */
+            flex: 1; 
         }
 
-        /* ĐÃ SỬA: style cho card chứa đồ thị */
         .chart-card {
             background: #2a3b3f;
             border-radius: 1rem;
@@ -76,7 +75,7 @@
             display: flex;
             flex-direction: column;
             gap: 0.3rem;
-            flex: 1; /* ĐÃ THÊM: chia đều không gian với card alert */
+            flex: 1; 
         }
         .chart-card canvas {
             width: 100%;
@@ -85,7 +84,6 @@
             border-radius: 0.5rem;
             display: block;
         }
-        /* ĐÃ THÊM: nhãn nhỏ hiển thị trạng thái bên dưới đồ thị */
         .chart-label {
             display: flex;
             justify-content: space-between;
@@ -102,7 +100,6 @@
             text-align: center;
             color: white;
             font-size: 1rem;
-            /* ĐÃ SỬA: không flex để giữ kích thước nội dung */
         }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
 
@@ -137,7 +134,6 @@
             word-break: break-word;
         }
 
-        /* Desktop: cam trái, panel phải với đồ thị */
         @media (min-width: 768px) and (orientation: landscape) {
             .main-content {
                 flex-direction: row;
@@ -145,14 +141,14 @@
             }
             .video-box {
                 flex: 0 0 75%;
-                aspect-ratio: auto; /* bỏ tỉ lệ, kéo giãn theo chiều cao */
+                aspect-ratio: auto; 
             }
             .side-panel {
                 flex: 1;
                 min-width: 0;
             }
             .chart-card canvas {
-                height: 150px; /* ĐÃ THÊM: chiều cao cố định cho desktop */
+                height: 150px; 
             }
             .alert-card {
                 flex: 0 0 auto;
@@ -166,14 +162,13 @@
             .chart-card canvas { height: 100px; }
         }
 
-        /* ✅ ĐÃ THÊM: tối ưu hiển thị mobile dọc */
         @media (max-width: 768px) {
             .main-content {
-                flex-direction: column; /* ép chắc chắn 1 cột */
+                flex-direction: column; 
             }
 
             .video-box {
-                height: 50vh; /* camera chiếm nửa màn hình */
+                height: 50vh; 
                 aspect-ratio: auto;
             }
         }
@@ -189,7 +184,7 @@
         </div>
         <div class="side-panel">
             <div class="info">
-                <!-- ĐÃ THAY THẾ: card Mắt/EAR thành đồ thị -->
+
                 <div class="chart-card" id="earChartCard">
                     <canvas id="earChart"></canvas>
                     <div class="chart-label">
@@ -197,7 +192,7 @@
                         <span id="eyeState">--</span>
                     </div>
                 </div>
-                <!-- ĐÃ THAY THẾ: card Ngáp/MAR thành đồ thị -->
+
                 <div class="chart-card" id="marChartCard">
                     <canvas id="marChart"></canvas>
                     <div class="chart-label">
@@ -205,7 +200,7 @@
                         <span id="yawnState">--</span>
                     </div>
                 </div>
-                <!-- Card cảnh báo giữ nguyên -->
+
                 <div class="alert-card" id="alertCard" style="color:#fff; font-weight: bold; padding: 1rem;">
                     Cảnh báo: <span id="alertMsg">Ổn định</span>
                 </div>
@@ -235,17 +230,14 @@
         let showLandmarks = true;
         let modelReady = false;
 
-        // ----- Các tham số cải thiện -----
         const EAR_THRESH = 0.28;
         const MAR_THRESH = 0.48;
         const DROWSY_FRAMES = 6;
         const STABLE_FRAMES = 3;
 
-        // Bộ lọc trung bình trượt cho EAR
         let earHistory = [];
         const EAR_HISTORY_LEN = 5;
 
-        // Trạng thái ổn định
         let eyeClosedStable = false;
         let eyeClosedCounter = 0;
         let eyeOpenCounter = 0;
@@ -254,7 +246,6 @@
         let drowsyAlertActive = false;
         let lastYawnTime = 0;
 
-        // ĐÃ THÊM: Dữ liệu cho đồ thị
         const MAX_CHART_POINTS = 150;
         let earChartData = [];
         let marChartData = [];
@@ -322,7 +313,6 @@
             return earHistory.reduce((a,b) => a+b, 0) / earHistory.length;
         }
 
-        // ĐÃ THÊM: Hàm vẽ đồ thị
         function drawChart(canvasId, data, yMax, color, currentValue, statusText) {
             const cvs = document.getElementById(canvasId);
             if (!cvs) return;
@@ -336,7 +326,6 @@
             gctx.fillRect(0, 0, w, h);
 
             if (data.length < 2) {
-                // Vẽ nhãn nếu chưa có dữ liệu
                 gctx.fillStyle = '#aaa';
                 gctx.font = '12px monospace';
                 gctx.textAlign = 'center';
@@ -344,12 +333,10 @@
                 return;
             }
 
-            // Tính tỉ lệ
             const stepX = w / (data.length - 1);
-            const rangeY = h - 20; // chừa lề dưới
+            const rangeY = h - 20; 
             const zeroY = h - 10;
 
-            // Vẽ đường
             gctx.beginPath();
             gctx.strokeStyle = color;
             gctx.lineWidth = 2;
@@ -361,7 +348,6 @@
             }
             gctx.stroke();
 
-            // Vẽ điểm cuối
             const lastX = (data.length - 1) * stepX;
             const lastY = zeroY - (data[data.length-1] / yMax) * rangeY;
             gctx.beginPath();
@@ -369,7 +355,6 @@
             gctx.fillStyle = color;
             gctx.fill();
 
-            // Vẽ giá trị hiện tại
             gctx.fillStyle = '#fff';
             gctx.font = 'bold 11px monospace';
             gctx.textAlign = 'left';
@@ -377,7 +362,6 @@
             gctx.textAlign = 'right';
             gctx.fillText(statusText, w-5, 15);
 
-            // Trục ngang (mờ)
             gctx.beginPath();
             gctx.strokeStyle = '#444';
             gctx.lineWidth = 1;
@@ -386,7 +370,6 @@
             gctx.stroke();
         }
 
-        // Hàm reset tất cả trạng thái (ĐÃ THÊM)
         function resetAllStates() {
             drowsyFrameCount = 0;
             drowsyAlertActive = false;
@@ -410,7 +393,6 @@
         }
 
         function updateUI(ear, mar, rawEyesClosed, isYawning) {
-            // --- Xác nhận trạng thái mắt ổn định ---
             if (rawEyesClosed) {
                 eyeOpenCounter = 0;
                 eyeClosedCounter++;
@@ -426,24 +408,19 @@
             }
             const eyesClosed = eyeClosedStable;
 
-            // Cập nhật text hiển thị
             document.getElementById('earVal').textContent = ear.toFixed(3);
             document.getElementById('marVal').textContent = mar.toFixed(3);
             document.getElementById('eyeState').textContent = eyesClosed ? "NHẮM" : "MỞ";
 
-            // --- Cập nhật dữ liệu đồ thị ---
             const now = Date.now();
             earChartData.push(ear);
             marChartData.push(mar);
             if (earChartData.length > MAX_CHART_POINTS) earChartData.shift();
             if (marChartData.length > MAX_CHART_POINTS) marChartData.shift();
 
-            // Vẽ đồ thị EAR (yMax 0.5)
             drawChart('earChart', earChartData, 0.5, '#00ff00', ear, eyesClosed ? 'NHẮM' : 'MỞ');
-            // Vẽ đồ thị MAR (yMax 1.0)
             drawChart('marChart', marChartData, 1.0, '#ffaa00', mar, isYawning ? 'NGÁP' : 'BT');
 
-            // --- Xử lý ngáp ---
             if (isYawning && now - lastYawnTime > 3000) {
                 lastYawnTime = now;
                 document.getElementById('yawnState').textContent = "NGÁP!";
@@ -460,7 +437,6 @@
                     document.getElementById('yawnState').textContent = "Bình thường";
             }
 
-            // --- Cảnh báo buồn ngủ ---
             if (eyesClosed) {
                 drowsyFrameCount++;
             } else {
