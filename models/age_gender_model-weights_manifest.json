@@ -2,6 +2,7 @@
   {
     "weights": [
       {
+        
         "name": "entry_flow/conv_in/filters",
         "shape": [3, 3, 3, 32],
         "dtype": "float32",

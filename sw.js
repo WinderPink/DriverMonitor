@@ -3,6 +3,7 @@ const ASSETS = [
   '/',
   '/index.html',
   '/manifest.json'
+  
 ];
 
 // Cài đặt và lưu cache các file quan trọng
